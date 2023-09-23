@@ -1,0 +1,62 @@
+{% extends "shuttle.html" %}
+{% set page_title = "Chat" %}
+{% block content %}
+    <h1>chat page</h1>
+    <hr>
+    <h2>your spaces</h2>
+    <input id = "space_name" placeholder = "space name">
+    <button type = "submit" id = "submit">create space</button> <br>
+    <input id = "space_id" placeholder = "space id">
+    <button type = "submit" id = "joinspace">join space</button>
+    <ul id = "space_list"></ul>
+    <hr>
+    <h2>current space</h2>
+{% endblock %}
+{% block js %}
+    <script>
+        const token = localStorage.getItem("SHUTTLE_TOKEN");
+        if (!token) window.location.href = "/auth/login";
+        console.log(`Account Token: ${token}`);
+
+        // Establish websocket connection
+        const ws = new WebSocket(`wss://${window.location.host}/api/gateway`);
+        function send(action, payload) {
+            ws.send(JSON.stringify({
+                action: action,
+                payload: payload || {}
+            }))
+        }
+
+        // Handle websocket events
+        ws.onopen = (e) => {
+            send("authenticate", { token: token });
+            send("get_spaces");
+        }
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            console.log(data);
+            if (data.action == "spaces") {
+                for (let space of data.spaces) {
+                    if (document.getElementById(space.id) !== null) continue;
+                    let i = document.createElement("li");
+                    i.innerHTML = `<a onclick = "loadSpace('${space.id}');" id = "${space.id}">${space.name}</a>`;
+                    document.getElementById("space_list").appendChild(i);
+                }
+            }
+        }
+
+        // Temporary space testing
+        document.getElementById("submit").addEventListener("click", () => {
+            send("create_space", {
+                name: document.getElementById("space_name").value,
+                type: "joined",
+                visibility: "private"
+            });
+            send("get_spaces");
+        })
+        document.getElementById("joinspace").addEventListener("click", () => {
+            send("join_space", { id: document.getElementById("space_id").value });
+            send("get_spaces");
+        })
+    </script>
+{% endblock %}

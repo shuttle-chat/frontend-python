@@ -1,0 +1,6 @@
+# Hosting requirements
+uvicorn[standard]
+blacksheep
+
+# Page rendering (for this temp UI)
+jinja2

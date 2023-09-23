@@ -1,0 +1,32 @@
+{#-
+    Shuttle Frontend - Base Template
+    Copyright (c) 2023 iiPython, DmmD Gaming
+-#}
+
+{#- Page content -#}
+<!doctype html>
+<html lang = "en">
+    <head>
+        <meta charset = "utf-8">
+        <title>{{ page_title or "Home" }} - Shuttle</title>
+    </head>
+    <body>
+        {% block content %}{% endblock %}
+
+        <!-- JS -->
+        <script>
+            async function call(endpoint, payload) {
+                const resp = await fetch(`/api/${endpoint}`, {
+                    body: JSON.stringify(payload),
+                    method: "post",
+                    headers: {
+                        "Accept": "application/json",
+                        "Content-Type": "application/json"
+                    }
+                });
+                return await resp.json();
+            }
+        </script>
+        {% block js %}{% endblock %}
+    </body>
+</html>

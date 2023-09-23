@@ -1,25 +1,4 @@
-{#-
-    Shuttle Frontend - Base Template
-    Copyright (c) 2023 iiPython, DmmD Gaming
--#}
-<!doctype html>
-<html lang = "en">
-    <head>
-        <meta charset = "utf-8">
-        <title>{{ page_title or "Home" }} - Shuttle</title>
-    </head>
-    <body>
-        {% block content %}{% endblock %}
-        <script>
-            async function call(endpoint, payload) {
-                const form = new FormData()
-                for (let k in payload) form.append(k, payload[k]);
-                const resp = await fetch(`/api/v1/${endpoint}`, {
-                    body: form,
-                    method: "post"
-                });
-                return await resp.json();
-            }
-        </script>
-    </body>
-</html>
+{% extends "shuttle.html" %}
+{% block content %}
+    <a href = "/auth/login">login</a> or <a href = "/auth/register">register</a>
+{% endblock %}

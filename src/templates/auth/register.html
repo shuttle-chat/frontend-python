@@ -1,0 +1,31 @@
+{% extends "shuttle.html" %}
+{% set page_title = "Register" %}
+{% block content %}
+    <form id = "register_form">
+        <input name = "username" placeholder = "Username" type = "text" id = "username">
+        <input name = "password" placeholder = "Password" type = "password" id = "password">
+        <button type = "submit">create account</button>
+    </form>
+    <a href = "/auth/login">already have an account?</a>
+    <p id = "message"></p>
+{% endblock %}
+{% block js %}
+    <script>
+        const error = document.getElementById("message");
+        const username = document.getElementById("username");
+        const password = document.getElementById("password");
+        document.getElementById("register_form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const resp = await call(
+                "register",
+                {
+                    username: username.value,
+                    password: password.value
+                }
+            );
+            if (resp.detail) return error.innerText = resp.detail;
+            localStorage.setItem("SHUTTLE_TOKEN", resp.token);
+            window.location = "/chat";
+        });
+    </script>
+{% endblock %}
