@@ -1,62 +1,269 @@
 {% extends "shuttle.html" %}
 {% set page_title = "Chat" %}
 {% block content %}
-    <h1>chat page</h1>
+
+    <!-- CSS -->
+    <link rel = "preconnect" href = "https://fonts.googleapis.com">
+    <link rel = "preconnect" href = "https://fonts.gstatic.com" crossorigin>
+    <link href = "https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel = "stylesheet">
+    <style>
+        * {
+            font-family: "Open Sans", sans-serif;
+        }
+        div#chat_container {
+            border: 1px black solid;
+            padding: 5px;
+            margin-bottom: 5px;
+            display: flex;
+            flex-direction: column;
+        }
+        ul#space_list {
+            margin-top: 5px;
+        }
+        li {
+            margin-bottom: 5px;
+        }
+        li a.space {
+            cursor: pointer;
+        }
+        .danger {
+            color: red;
+        }
+    </style>
+
+    <!-- Page layout -->
+    <h1>Shuttle Chat</h1>
+    <p id = "welcome"></p>
     <hr>
-    <h2>your spaces</h2>
-    <input id = "space_name" placeholder = "space name">
-    <button type = "submit" id = "submit">create space</button> <br>
-    <input id = "space_id" placeholder = "space id">
-    <button type = "submit" id = "joinspace">join space</button>
-    <ul id = "space_list"></ul>
-    <hr>
-    <h2>current space</h2>
+    <div id = "spaces_div">
+        <h2>Spaces List</h2>
+        <span>Please note: this list <b>only</b> contains spaces you are in.<br>Current list of spaces:</span>
+        <ul id = "space_list"></ul>
+        <button id = "create_space">Create Space</button>
+        <button id = "join_space">Join Space</button>
+        <hr>
+    </div>
+    <div id = "info_div" style = "display: none;">
+        <h2>Current Space Information</h2>
+        <span id = "csi"></span>
+        <ul id = "csm"></ul>
+        <span>Channels:</span>
+        <ul id = "csc"></ul>
+        <div id = "csb" style = "display: none;">
+            <button id = "csb_create">Create Channel</button>
+            <button id = "csb_delete" class = "danger">Delete Channel</button>
+            <button id = "csb_sdelete" class = "danger">Delete Space</button>
+        </div>
+        <hr>
+    </div>
+    <div id = "chat_div" style = "display: none;">
+        <h2 id = "chat_header">Active Chat</h2>
+        <div id = "chat_container"></div>
+        <input id = "chat_input" placeholder = "Send some text" autocomplete = "off">
+        <button id = "chat_send">Send!</button>
+    </div>
 {% endblock %}
 {% block js %}
     <script>
         const token = localStorage.getItem("SHUTTLE_TOKEN");
         if (!token) window.location.href = "/auth/login";
-        console.log(`Account Token: ${token}`);
+
+        // Stored messages
+        const delete_message = `This will completely delete "$" from this Shuttle server.
+All messages will be removed, all members will be kicked, and it cannot be undone!
+Type 'YES' in all caps to confirm this action.`;
+
+        // Branding :D
+        console.log(`
+   ___ _        _   _   _     
+  / __| |_ _  _| |_| |_| |___ 
+  \\__ \\ ' \\ || |  _|  _| / -_)
+  |___/_||_\\_,_|\\__|\\__|_\\___|
+                             
+Shuttle v1.2.0 - Development UI
+  Copyright (c) 2023 iiPython`);
+        console.warn(`Account Token: ${token}`);
 
         // Establish websocket connection
         const ws = new WebSocket(`wss://${window.location.host}/api/gateway`);
-        function send(action, payload) {
+        window.callbacks = {}
+
+        function send(action, payload, callback) {
+            let callback_id;
+            if (callback) {
+                callback_id = (Math.random() + 1).toString(36).substring(7);
+                window.callbacks[callback_id] = callback;
+            }
             ws.send(JSON.stringify({
                 action: action,
-                payload: payload || {}
-            }))
+                payload: payload || {},
+                callback: callback_id
+            }));
+        }
+
+        // Handle chat
+        const chatDiv = document.getElementById("chat_div");
+        const chatContainer = document.getElementById("chat_container");
+        const chatInput = document.getElementById("chat_input");
+        const chatSendBtn = document.getElementById("chat_send");
+
+        function logMessage(author_name, content, order) {
+            if (!order) order = "after";
+            const msg = document.createElement("span");
+            msg.innerText = `${author_name}: ${content}`;
+            if (order == "before") return chatContainer.insertBefore(msg, chatContainer.firstChild);
+            chatContainer.appendChild(msg);
+        }
+
+        // Handle spaces
+        const spacesList = document.getElementById("space_list");
+        const spaceInfoDiv = document.getElementById("info_div");
+        const spaceInfo = document.getElementById("csi");
+        const spaceMembers = document.getElementById("csm");
+        const spaceChannels = document.getElementById("csc");
+        const spaceAdminButtons = document.getElementById("csb");
+        const spaceButtonCreate = document.getElementById("csb_create");
+        const spaceButtonDeleteC = document.getElementById("csb_delete");
+        const spaceButtonDeleteS = document.getElementById("csb_sdelete");
+        spaceButtonCreate.addEventListener("click", () => {
+            const channel_name = prompt("Channel name (max 50 chars):");
+            if (!channel_name) return;
+            send("create_channel", { name: channel_name, space: window.last_space_loaded }, (d) => {
+                if (d.error) return alert(`Failed to create channel: ${d.error}`);
+                const space_id = window.last_space_loaded;
+                window.last_space_loaded = null;
+                load_space_info(space_id);
+            });
+        });
+        spaceButtonDeleteC.addEventListener("click", () => {
+            const channel_select = prompt("Channel to delete (name OR id):");
+            if (!channel_select) return;
+            for (let channel of spaceChannels.children) {
+                if (channel_select == channel.innerText) {
+                    channel_select = channel.getAttribute("data-shuttle-id");
+                    break;
+                } 
+            }
+            send("delete_channel", { id: channel_select, space: window.last_space_loaded }, (d) => {
+                if (d.error) return alert(`Failed to delete channel: ${d.error}`);
+                const space_id = window.last_space_loaded;
+                window.last_space_loaded = null;
+                load_space_info(space_id);
+            });
+        });
+        spaceButtonDeleteS.addEventListener("click", () => {
+            const conf = prompt(delete_message.replace("$", spaceInfo.getAttribute("data-shuttle-name")));
+            if (conf !== "YES") return;
+            send("delete_space", { id: window.last_space_loaded }, (d) => {
+                if (d.error) return alert(`Failed to delete: ${d.error}`);
+                chatDiv.style.display = "none";
+                spaceInfoDiv.style.display = "none";
+                window.last_space_loaded = null;
+                send("get_spaces", {}, refresh_spaces);
+                alert("Space has been deleted.");
+            })
+        });
+
+        function refresh_spaces(data) {
+            spacesList.innerHTML = "";
+            for (let space of data.spaces) {
+                const spaceElem = document.createElement("li");
+                spaceElem.innerHTML = `<a onclick = "load_space_info('${space.id}');" class = "space">${space.name}</a>`;
+                spaceElem.title = `Space ID: ${space.id}`;
+                spacesList.appendChild(spaceElem);
+            }
+        }
+        function load_space_info(id) {
+            if (id == window.last_space_loaded) return;  // Save some requests
+            send("space_info", { id: id }, (d) => {
+                const isOwner = window.user_id == d.owner.id
+                chatDiv.style.display = "none";
+                spaceAdminButtons.style.display = "none";
+                spaceButtonCreate.style.display = "none";
+                spaceButtonDeleteC.style.display = "none";
+                spaceButtonDeleteS.style.display = "none";
+                spaceInfoDiv.style.display = "block";
+                spaceInfo.setAttribute("data-shuttle-name", d.name);
+                spaceInfo.innerText = `ID: ${d.id}\nName: ${d.name}\nOwner: ${d.owner.name} (ID: ${d.owner.id})\nMembers:`;
+                spaceMembers.innerHTML = "";
+                spaceChannels.innerHTML = "";
+                for (let member of d.members) {
+                    if (member.id == d.owner.id) continue;
+                    const memberElem = document.createElement("li");
+                    memberElem.innerText = `${member.name} (ID: ${member.id})`;
+                    spaceMembers.appendChild(memberElem);
+                }
+                for (let channel of d.channels) {
+                    const channelElem = document.createElement("li");
+                    channelElem.innerText = channel.name;
+                    channelElem.setAttribute("data-shuttle-id", channel.id);
+                    spaceChannels.appendChild(channelElem);
+                }
+                if (d.members.length < 2) spaceMembers.innerHTML = "<li>No members to show.</li>";
+                if (d.type == "joined") {
+                    spaceChannels.innerHTML = "<li>This is a joined space (no channels).</li>";
+                    chatDiv.style.display = "block";
+                    if (isOwner) spaceButtonDeleteS.style.display = "block";
+                } else {
+                    spaceChannels.innerHTML = "<li>No channels to show.</li>";
+                    if (isOwner) {
+                        spaceButtonCreate.style.display = "block";
+                        spaceButtonDeleteC.style.display = "block";
+                        spaceButtonDeleteS.style.display = "block";
+                    }
+                }
+                if (isOwner) spaceAdminButtons.style.display = "flex";
+                chatContainer.innerHTML = "";
+                window.last_space_loaded = id;
+            });
         }
 
         // Handle websocket events
         ws.onopen = (e) => {
-            send("authenticate", { token: token });
-            send("get_spaces");
+            send("authenticate", { token: token }, (d) => {
+                const w = document.getElementById("welcome");
+                w.innerText = `Welcome to Shuttle, ${d.username}.`;
+                w.title = `User ID: ${d.id}`;
+                window.user_id = d.id;
+            });
+            send("get_spaces", {}, refresh_spaces);
         }
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
             console.log(data);
-            if (data.action == "spaces") {
-                for (let space of data.spaces) {
-                    if (document.getElementById(space.id) !== null) continue;
-                    let i = document.createElement("li");
-                    i.innerHTML = `<a onclick = "loadSpace('${space.id}');" id = "${space.id}">${space.name}</a>`;
-                    document.getElementById("space_list").appendChild(i);
-                }
-            }
+            const callback = window.callbacks[data.callback];
+            if (!callback) return;
+            callback(data.data, data.success);
         }
 
-        // Temporary space testing
-        document.getElementById("submit").addEventListener("click", () => {
-            send("create_space", {
-                name: document.getElementById("space_name").value,
-                type: "joined",
-                visibility: "private"
-            });
-            send("get_spaces");
-        })
-        document.getElementById("joinspace").addEventListener("click", () => {
-            send("join_space", { id: document.getElementById("space_id").value });
-            send("get_spaces");
-        })
+        // Handle spaces
+        document.getElementById("create_space").addEventListener("click", () => {
+            const space_name = prompt("Space name (50 chars max):");
+            const space_type = prompt("Space type ('joined' or 'extended'):");
+            const space_visb = prompt("Space visibility ('public' or 'private'):");
+            if (!(space_name && space_type && space_visb)) return;
+            send(
+                "create_space",
+                { name: space_name, type: space_type, visibility: space_visb },
+                (d, s) => {
+                    if (!s) return alert(`Failed to create new space: ${d.error}`);
+                    alert(`Created '${space_name}'!`);
+                    send("get_spaces", {}, refresh_spaces);
+                }
+            );
+        });
+        document.getElementById("join_space").addEventListener("click", () => {
+            const space_id = prompt("Enter space ID to join:");
+            if (!space_id) return;
+            send(
+                "join_space",
+                { id: space_id },
+                (d, s) => {
+                    if (!s) return alert(`Failed to join space: ${d.error}`);
+                    alert(`Joined space '${d.name}'!`);
+                    send("get_spaces", {}, refresh_spaces);
+                }
+            );
+        });
     </script>
 {% endblock %}
